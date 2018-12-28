@@ -12,6 +12,7 @@
  * products from Adafruit!
  *
  * Written by Kevin "KTOWN" Townsend for Adafruit Industries.
+ * Extended by AMoo-Miki
  *
  * BSD license, all text here must be included in any redistribution.
  *
@@ -191,6 +192,12 @@ class Adafruit_BME280 {
             STANDBY_MS_500  = 0b100,
             STANDBY_MS_1000 = 0b101
         };
+
+        enum chip_model {
+            MODEL_UNKNOWN = 0,
+            MODEL_BMP280 = 0x58,
+            MODEL_BME280 = 0x60
+        };
     
         // constructors
         Adafruit_BME280(void);
@@ -203,21 +210,29 @@ class Adafruit_BME280 {
         bool begin(uint8_t addr, TwoWire *theWire);
 		bool init();
 
-	void setSampling(sensor_mode mode              = MODE_NORMAL,
-			 sensor_sampling tempSampling  = SAMPLING_X16,
-			 sensor_sampling pressSampling = SAMPLING_X16,
-			 sensor_sampling humSampling   = SAMPLING_X16,
-			 sensor_filter filter          = FILTER_OFF,
-			 standby_duration duration     = STANDBY_MS_0_5
-			 );
-                   
+	    void setSampling(
+	        sensor_mode mode              = MODE_NORMAL,
+		    sensor_sampling tempSampling  = SAMPLING_X16,
+			sensor_sampling pressSampling = SAMPLING_X16,
+			sensor_sampling humSampling   = SAMPLING_X16,
+			sensor_filter filter          = FILTER_OFF,
+			standby_duration duration     = STANDBY_MS_0_5
+		);
+
+        float convertCtoF(float c);
+        float convertFtoC(float f);
+        chip_model getChipModel();
+
         void takeForcedMeasurement();
-        float readTemperature(void);
+        float readTemperature();
+        float readTemperature(bool scale);
         float readPressure(void);
         float readHumidity(void);
         
         float readAltitude(float seaLevel);
         float seaLevelForAltitude(float altitude, float pressure);
+
+        float computeHeatIndex(float temperature, float percentHumidity, bool isFahrenheit);
 
         
     private:
@@ -326,6 +341,8 @@ class Adafruit_BME280 {
             }
         };
         ctrl_hum _humReg;
+
+        chip_model m_chip_model = MODEL_UNKNOWN;
 };
 
 #endif

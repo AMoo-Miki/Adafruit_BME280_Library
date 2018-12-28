@@ -6,20 +6,21 @@
  * @section intro_sec Introduction
  *
  *  Driver for the BME280 humidity, temperature & pressure sensor
- * 
+ *
  * These sensors use I2C or SPI to communicate, 2 or 4 pins are required
  * to interface.
  *
  * Designed specifically to work with the Adafruit BME280 Breakout
  * ----> http://www.adafruit.com/products/2650
- *    
- *  Adafruit invests time and resources providing this open source code, 
- *  please support Adafruit and open-source hardware by purchasing 
+ *
+ *  Adafruit invests time and resources providing this open source code,
+ *  please support Adafruit and open-source hardware by purchasing
  *  products from Adafruit!
  *
  * @section author Author
  *
  * Written by Kevin "KTOWN" Townsend for Adafruit Industries.
+ * Extended by AMoo-Miki
  *
  * @section license License
  *
@@ -33,7 +34,7 @@
 #include "Adafruit_BME280.h"
 
 /**************************************************************************/
-/*! 
+/*!
     @brief  class constructor
 */
 /**************************************************************************/
@@ -42,7 +43,7 @@ Adafruit_BME280::Adafruit_BME280()
 { }
 
 /**************************************************************************/
-/*! 
+/*!
     @brief  class constructor if using hardware SPI
     @param cspin the chip select pin to use
 */
@@ -52,7 +53,7 @@ Adafruit_BME280::Adafruit_BME280(int8_t cspin)
 { }
 
 /**************************************************************************/
-/*! 
+/*!
     @brief  class constructor if using software SPI
     @param cspin the chip select pin to use
     @param mosipin the MOSI pin to use
@@ -123,6 +124,17 @@ bool Adafruit_BME280::begin(void)
 
 /**************************************************************************/
 /*!
+    @brief  Returns the chip model
+    @returns true on success, false otherwise
+*/
+/**************************************************************************/
+Adafruit_BME280::chip_model Adafruit_BME280::getChipModel()
+{
+    return m_chip_model;
+}
+
+/**************************************************************************/
+/*!
     @brief  Initialise sensor with given parameters / settings
     @returns true on success, false otherwise
 */
@@ -148,8 +160,21 @@ bool Adafruit_BME280::init()
     }
 
     // check if sensor, i.e. the chip ID is correct
-    if (read8(BME280_REGISTER_CHIPID) != 0x60)
-        return false;
+    uint8_t chipId = read8(BME280_REGISTER_CHIPID);
+    switch (chipId) {
+        case MODEL_BME280:
+            m_chip_model = MODEL_BME280;
+            Serial.println("Found BME280 chip...");
+            break;
+
+        case MODEL_BMP280:
+            m_chip_model = MODEL_BMP280;
+            Serial.println("Found BMP280 chip...");
+            break;
+
+        default:
+            return false;
+    }
 
     // reset the device using soft-reset
     // this makes sure the IIR is off, etc.
@@ -160,7 +185,7 @@ bool Adafruit_BME280::init()
 
     // if chip is still reading calibration, delay
     while (isReadingCalibration())
-          delay(100);
+        delay(100);
 
     readCoefficients(); // read trimming parameters, see DS 4.2.2
 
@@ -174,7 +199,7 @@ bool Adafruit_BME280::init()
 /**************************************************************************/
 /*!
     @brief  setup sensor with given parameters / settings
-    
+
     This is simply a overload to the normal begin()-function, so SPI users
     don't get confused about the library requiring an address.
     @param mode the power mode to use for the sensor
@@ -185,22 +210,24 @@ bool Adafruit_BME280::init()
     @param duration the standby duration to use
 */
 /**************************************************************************/
-void Adafruit_BME280::setSampling(sensor_mode       mode,
-		 sensor_sampling   tempSampling,
-		 sensor_sampling   pressSampling,
-		 sensor_sampling   humSampling,
-		 sensor_filter     filter,
-		 standby_duration  duration) {
+void Adafruit_BME280::setSampling(
+    sensor_mode       mode,
+    sensor_sampling   tempSampling,
+    sensor_sampling   pressSampling,
+    sensor_sampling   humSampling,
+    sensor_filter     filter,
+    standby_duration  duration
+) {
     _measReg.mode     = mode;
     _measReg.osrs_t   = tempSampling;
     _measReg.osrs_p   = pressSampling;
-        
-    
+
+
     _humReg.osrs_h    = humSampling;
     _configReg.filter = filter;
     _configReg.t_sb   = duration;
 
-    
+
     // you must make sure to also set REGISTER_CONTROL after setting the
     // CONTROLHUMID register, otherwise the values won't be applied (see DS 5.4.3)
     write8(BME280_REGISTER_CONTROLHUMID, _humReg.get());
@@ -270,7 +297,7 @@ void Adafruit_BME280::write8(byte reg, byte value) {
 /**************************************************************************/
 uint8_t Adafruit_BME280::read8(byte reg) {
     uint8_t value;
-    
+
     if (_cs == -1) {
         _wire -> beginTransmission((uint8_t)_i2caddr);
         _wire -> write((uint8_t)reg);
@@ -407,11 +434,35 @@ uint32_t Adafruit_BME280::read24(byte reg)
 
 /**************************************************************************/
 /*!
+    @brief  Convert the temperature scale from *C to *F
+    @param c the temperature in *C
+    @returns the temperature in *F
+*/
+/**************************************************************************/
+float Adafruit_BME280::convertCtoF(float c) {
+    return c * 1.8 + 32;
+}
+
+
+/**************************************************************************/
+/*!
+    @brief  Convert the temperature scale from *F to *C
+    @param f the temperature in *F
+    @returns the temperature in *C
+*/
+/**************************************************************************/
+float Adafruit_BME280::convertFtoC(float f) {
+    return (f - 32) * 0.55555;
+}
+
+
+/**************************************************************************/
+/*!
     @brief  Take a new measurement (only possible in forced mode)
 */
 /**************************************************************************/
 void Adafruit_BME280::takeForcedMeasurement()
-{   
+{
     // If we are in forced mode, the BME sensor goes back to sleep after each
     // measurement and we need to set it to forced mode once at this point, so
     // it will take the next measurement and then return to sleep again.
@@ -422,7 +473,7 @@ void Adafruit_BME280::takeForcedMeasurement()
         // wait until measurement has been completed, otherwise we would read
         // the values from the last measurement
         while (read8(BME280_REGISTER_STATUS) & 0x08)
-		delay(1);
+		    delay(1);
     }
 }
 
@@ -464,19 +515,33 @@ void Adafruit_BME280::readCoefficients(void)
 /**************************************************************************/
 bool Adafruit_BME280::isReadingCalibration(void)
 {
-  uint8_t const rStatus = read8(BME280_REGISTER_STATUS);
+    uint8_t const rStatus = read8(BME280_REGISTER_STATUS);
 
-  return (rStatus & (1 << 0)) != 0;
+    return (rStatus & (1 << 0)) != 0;
 }
 
 
 /**************************************************************************/
 /*!
     @brief  Returns the temperature from the sensor
+    @param scale false for *C and true for *F
     @returns the temperature read from the device
 */
 /**************************************************************************/
-float Adafruit_BME280::readTemperature(void)
+float Adafruit_BME280::readTemperature()
+{
+    return readTemperature(false);
+}
+
+
+/**************************************************************************/
+/*!
+    @brief  Returns the temperature from the sensor
+    @param scale false for *C and true for *F
+    @returns the temperature read from the device
+*/
+/**************************************************************************/
+float Adafruit_BME280::readTemperature(bool scale)
 {
     int32_t var1, var2;
 
@@ -487,7 +552,7 @@ float Adafruit_BME280::readTemperature(void)
 
     var1 = ((((adc_T>>3) - ((int32_t)_bme280_calib.dig_T1 <<1))) *
             ((int32_t)_bme280_calib.dig_T2)) >> 11;
-             
+
     var2 = (((((adc_T>>4) - ((int32_t)_bme280_calib.dig_T1)) *
               ((adc_T>>4) - ((int32_t)_bme280_calib.dig_T1))) >> 12) *
             ((int32_t)_bme280_calib.dig_T3)) >> 14;
@@ -495,6 +560,9 @@ float Adafruit_BME280::readTemperature(void)
     t_fine = var1 + var2;
 
     float T = (t_fine * 5 + 128) >> 8;
+    if (scale) {
+        return convertCtoF(T/100);
+    }
     return T/100;
 }
 
@@ -508,7 +576,7 @@ float Adafruit_BME280::readTemperature(void)
 float Adafruit_BME280::readPressure(void) {
     int64_t var1, var2, p;
 
-    readTemperature(); // must be done first to get t_fine
+    readTemperature(false); // must be done first to get t_fine
 
     int32_t adc_P = read24(BME280_REGISTER_PRESSUREDATA);
     if (adc_P == 0x800000) // value in case pressure measurement was disabled
@@ -543,12 +611,14 @@ float Adafruit_BME280::readPressure(void) {
 */
 /**************************************************************************/
 float Adafruit_BME280::readHumidity(void) {
-    readTemperature(); // must be done first to get t_fine
+    if (m_chip_model == MODEL_BMP280) return NAN;
+
+    readTemperature(false); // must be done first to get t_fine
 
     int32_t adc_H = read16(BME280_REGISTER_HUMIDDATA);
     if (adc_H == 0x8000) // value in case humidity measurement was disabled
         return NAN;
-        
+
     int32_t v_x1_u32r;
 
     v_x1_u32r = (t_fine - ((int32_t)76800));
@@ -594,8 +664,8 @@ float Adafruit_BME280::readAltitude(float seaLevel)
 
 /**************************************************************************/
 /*!
-    Calculates the pressure at sea level (in hPa) from the specified altitude 
-    (in meters), and atmospheric pressure (in hPa).  
+    Calculates the pressure at sea level (in hPa) from the specified altitude
+    (in meters), and atmospheric pressure (in hPa).
     @param  altitude      Altitude in meters
     @param  atmospheric   Atmospheric pressure in hPa
     @returns the pressure at sea level (in hPa) from the specified altitude
@@ -611,4 +681,49 @@ float Adafruit_BME280::seaLevelForAltitude(float altitude, float atmospheric)
     //  http://forums.adafruit.com/viewtopic.php?f=22&t=58064
 
     return atmospheric / pow(1.0 - (altitude/44330.0), 5.255);
+}
+
+
+/**************************************************************************/
+/*!
+    @brief  Calculates the Heat Index
+    @param  temperature     the temperature
+    @param  percentHumidity the relative humidity
+    @param  isFahrenheit    true if the temperature parameter is in *F
+    @returns the Heat Index matching the scale of the input
+*/
+/**************************************************************************/
+float Adafruit_BME280::computeHeatIndex(float temperature, float percentHumidity, bool isFahrenheit)
+{
+    // Using both Rothfusz and Steadman's equations
+    //  http://www.wpc.ncep.noaa.gov/html/heatindex_equation.shtml
+
+    if (m_chip_model == MODEL_BMP280 && percentHumidity == NAN) percentHumidity = 0;
+
+    float hi;
+
+    if (!isFahrenheit)
+        temperature = convertCtoF(temperature);
+
+    hi = 0.5 * (temperature + 61.0 + ((temperature - 68.0) * 1.2) + (percentHumidity * 0.094));
+
+    if (hi > 79) {
+        hi = -42.379 +
+             2.04901523 * temperature +
+            10.14333127 * percentHumidity +
+            -0.22475541 * temperature*percentHumidity +
+            -0.00683783 * pow(temperature, 2) +
+            -0.05481717 * pow(percentHumidity, 2) +
+             0.00122874 * pow(temperature, 2) * percentHumidity +
+             0.00085282 * temperature*pow(percentHumidity, 2) +
+            -0.00000199 * pow(temperature, 2) * pow(percentHumidity, 2);
+
+        if((percentHumidity < 13) && (temperature >= 80.0) && (temperature <= 112.0))
+            hi -= ((13.0 - percentHumidity) * 0.25) * sqrt((17.0 - abs(temperature - 95.0)) * 0.05882);
+
+        else if((percentHumidity > 85.0) && (temperature >= 80.0) && (temperature <= 87.0))
+            hi += ((percentHumidity - 85.0) * 0.1) * ((87.0 - temperature) * 0.2);
+    }
+
+    return isFahrenheit ? hi : convertFtoC(hi);
 }
